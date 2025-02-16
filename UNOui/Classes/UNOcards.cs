@@ -132,32 +132,43 @@ namespace UNOui
 
         public void DeckDown(object sender, MouseButtonEventArgs e)
         {
-            if ((e != null && IsDrawing) || Table.turn != 1) { return; }
+            if (IsDrawing || Table.turn != 1) { return; }
             IsDrawing = true;
             AddCard();
             Audio.PlayCardTakeSound();
             Card card = Cards[Cards.Count - 1];
+
             if (card.CardIsPlayable())
             {
                 IsDrawing = false;
-                UserControl draworplay = new DrawOrPlay();
-                Items.GameItem.gamegrid.Children.Add(draworplay);
+                ShowDrawOrPlayDialog();
             }
             else
             {
-                if (Settings.DrawUntilPlayable == 1 && !card.CardIsPlayable())
+                HandleNonPlayableCard(card);
+            }
+        }
+
+        private void ShowDrawOrPlayDialog()
+        {
+            UserControl drawOrPlay = new DrawOrPlay();
+            Items.GameItem.gamegrid.Children.Add(drawOrPlay);
+        }
+
+        private void HandleNonPlayableCard(Card card)
+        {
+            if (Settings.DrawUntilPlayable == 1 && !card.CardIsPlayable())
+            {
+                Task.Delay(TimeSpan.FromSeconds(1)).ContinueWith(task =>
                 {
-                    Task.Delay(TimeSpan.FromSeconds(1)).ContinueWith(task =>
-                    {
-                        DeckDown(new object(), null);
-                    }, TaskScheduler.FromCurrentSynchronizationContext());
-                }
-                else
-                {
-                    IsDrawing = false;
-                    Table.SetNextTurn();
-                    Table.CheckForTurn();
-                }
+                    DeckDown(new object(), null);
+                }, TaskScheduler.FromCurrentSynchronizationContext());
+            }
+            else
+            {
+                IsDrawing = false;
+                Table.SetNextTurn();
+                Table.CheckForTurn();
             }
         }
     }
@@ -319,70 +330,72 @@ namespace UNOui
 
         public void PlayCard()
         {
-            if (Cards.Count == 0 || Table.HasSomeoneWon()) { return; }
-            IsItsTurn = true;
-            Table.RefreshVisuals();
-            int randomnumber = Items.MainWindowItem.RandomInteger(-45, 45);
-            double delay = Items.MainWindowItem.RandomDouble(1, 2);
-            Task.Delay(TimeSpan.FromSeconds(delay)).ContinueWith(task =>
+            SetZIndexForDraggedImage();
+            if (IsCardPlayable())
             {
-                Card? logiccard = PlayCardLogic();
-                if (logiccard != null)
+                Card draggedCard = Card.ImageToCard(Table.draggedimage);
+                int randomRotation = GetRandomRotation();
+                PlayDraggedCard(draggedCard, randomRotation);
+                CheckForUno();
+                RemoveCardFromCanvas(draggedCard);
+                HandleNextTurn();
+                HandleWildCard(draggedCard);
+            }
+        }
+
+        private void SetZIndexForDraggedImage()
+        {
+            Canvas.SetZIndex(Table.draggedimage, Items.GameItem.CardZIndex);
+        }
+
+        private bool IsCardPlayable()
+        {
+            double bottom = Canvas.GetTop(Table.draggedimage);
+            return bottom < Items.GameItem.gamecanvas.ActualHeight * (Table.draggedimage.Height / (Items.GameItem.gamecanvas.ActualHeight / 2)) &&
+                   Card.ImageToCard(Table.draggedimage).CardIsPlayable();
+        }
+
+        private int GetRandomRotation()
+        {
+            Random random = new Random();
+            return random.Next(-45, 45);
+        }
+
+        private void PlayDraggedCard(Card draggedCard, int randomRotation)
+        {
+            Table.AddToTopCards(randomRotation);
+            draggedCard.PlayCard();
+            Table.topcard.image.RenderTransform = Card.rotate(randomRotation);
+            Table.topcard.SetZIndexToOne();
+            Cards.Remove(draggedCard);
+        }
+
+        private void RemoveCardFromCanvas(Card draggedCard)
+        {
+            Items.GameItem.gamecanvas.Children.Remove(draggedCard.image);
+            Canvas.SetZIndex(Table.draggedimage, Items.GameItem.CardZIndex);
+        }
+
+        private void HandleNextTurn()
+        {
+            if (Table.topcard.number != -1)
+            {
+                Table.SetNextTurn();
+            }
+        }
+
+        private void HandleWildCard(Card draggedCard)
+        {
+            Task.Delay(TimeSpan.FromSeconds(0.5)).ContinueWith(task =>
+            {
+                if ((draggedCard.number == -4 || draggedCard.number == -5) && draggedCard.color == "none")
                 {
-                    Table.AddToTopCards(randomnumber);
-                    logiccard.PlayCard();
-                    Card card = logiccard;
-                    Cards.Remove(card);
-                    CheckForUno();
-                    if (Table.topcard.number != -1)
-                    {
-                        Table.SetNextTurn();
-                    }
-                    CheckForWildCards();
-                    Table.topcard.SetZIndexToOne();
-                    Table.topcard.image.RenderTransform = Card.rotate(randomnumber);
-                    IsItsTurn = false;
-                    Table.RefreshVisuals();   
+                    UserControl changeColor = new ColorChange();
+                    Items.GameItem.gamegrid.Children.Add(changeColor);
                 }
                 else
                 {
-                    Card newcard = Card.GetRandomCard();
-                    Audio.PlayCardTakeSound();
-                    Cards.Add(newcard);
-                    Table.RefreshVisuals();
-                    if (newcard.CardIsPlayable())
-                    {
-                        Task.Delay(TimeSpan.FromSeconds(1.5)).ContinueWith(task => {
-                            Table.AddToTopCards(randomnumber);
-                            newcard.PlayCard();
-                            Card card = newcard;
-                            Cards.Remove(newcard);
-                            CheckForUno();
-                            if (Table.topcard.number != -1)
-                            {
-                                Table.SetNextTurn();
-                            }
-                            CheckForWildCards();
-                            Table.topcard.SetZIndexToOne();
-                            Table.topcard.image.RenderTransform = Card.rotate(randomnumber);
-                            IsItsTurn = false;
-                            Table.RefreshVisuals();
-                        }, TaskScheduler.FromCurrentSynchronizationContext());
-                    }
-                    else
-                    {
-                        if(Settings.DrawUntilPlayable == 1)
-                        {
-                            PlayCard();
-                        }
-                        else
-                        {
-                            Table.SetNextTurn();
-                            Table.CheckForTurn();
-                            IsItsTurn = false;
-                            Table.RefreshVisuals();
-                        }
-                    }
+                    Items.GameItem.player.CheckForWildCards();
                 }
             }, TaskScheduler.FromCurrentSynchronizationContext());
         }
@@ -459,23 +472,32 @@ namespace UNOui
             }
             return false;
         }
+        public class CardConstants
+        {
+            public const int WILD_CARD = -5;
+            public const int DRAW_FOUR = -4;
+            public const int REVERSE = -1;
+            public const int DRAW_TWO = -2;
+            public const int BLOCK = -3;
+        }
+
         public void CheckForWildCards()
         {
-            if (Table.topcard.number == -5)
+            if (Table.topcard.number == CardConstants.WILD_CARD)
             {
                 string color;
                 string imagepath;
-                ((Bot)this).CardChangeColor(out color, out imagepath, -5);
+                ((Bot)this).CardChangeColor(out color, out imagepath, CardConstants.WILD_CARD);
                 Table.topcard.color = color;
                 Table.topcard.image = Card.CardNameToImage(imagepath);
                 Table.RefreshVisuals();
                 Card.SetTurneDelay();
             }
-            else if (Table.topcard.number == -4)
+            else if (Table.topcard.number == CardConstants.DRAW_FOUR)
             {
                 string color;
                 string imagepath;
-                ((Bot)this).CardChangeColor(out color, out imagepath, -4);
+                ((Bot)this).CardChangeColor(out color, out imagepath, CardConstants.DRAW_FOUR);
                 Table.topcard.color = color;
                 Table.topcard.image = Card.CardNameToImage(imagepath);
                 Table.RefreshVisuals();
@@ -499,12 +521,12 @@ namespace UNOui
                     Table.RefreshVisuals();
                 }, TaskScheduler.FromCurrentSynchronizationContext());
             }
-            else if (Table.topcard.number == -3)
+            else if (Table.topcard.number == CardConstants.REVERSE)
             {
                 Table.SetNextTurn();
                 Card.SetTurneDelay();
             }
-            else if (Table.topcard.number == -2)
+            else if (Table.topcard.number == CardConstants.DRAW_TWO)
             {
                 CardHolder.AllCards[Table.turn - 1].AddCard();
 
@@ -515,7 +537,7 @@ namespace UNOui
                     Card.SetTurneDelay();
                 }, TaskScheduler.FromCurrentSynchronizationContext());
             }
-            else if (Table.topcard.number == -1)
+            else if (Table.topcard.number == CardConstants.BLOCK)
             {
                 if (Settings.PlayerCount == 2)
                 {
@@ -533,6 +555,7 @@ namespace UNOui
                 Table.CheckForTurn();
             }
         }
+
 
         public void RemoveCard(Card card)
         {

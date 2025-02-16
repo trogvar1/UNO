@@ -459,23 +459,32 @@ namespace UNOui
             }
             return false;
         }
+        public class CardConstants
+        {
+            public const int WILD_CARD = -5;
+            public const int DRAW_FOUR = -4;
+            public const int REVERSE = -1;
+            public const int DRAW_TWO = -2;
+            public const int BLOCK = -3;
+        }
+
         public void CheckForWildCards()
         {
-            if (Table.topcard.number == -5)
+            if (Table.topcard.number == CardConstants.WILD_CARD)
             {
                 string color;
                 string imagepath;
-                ((Bot)this).CardChangeColor(out color, out imagepath, -5);
+                ((Bot)this).CardChangeColor(out color, out imagepath, CardConstants.WILD_CARD);
                 Table.topcard.color = color;
                 Table.topcard.image = Card.CardNameToImage(imagepath);
                 Table.RefreshVisuals();
                 Card.SetTurneDelay();
             }
-            else if (Table.topcard.number == -4)
+            else if (Table.topcard.number == CardConstants.DRAW_FOUR)
             {
                 string color;
                 string imagepath;
-                ((Bot)this).CardChangeColor(out color, out imagepath, -4);
+                ((Bot)this).CardChangeColor(out color, out imagepath, CardConstants.DRAW_FOUR);
                 Table.topcard.color = color;
                 Table.topcard.image = Card.CardNameToImage(imagepath);
                 Table.RefreshVisuals();
@@ -499,12 +508,12 @@ namespace UNOui
                     Table.RefreshVisuals();
                 }, TaskScheduler.FromCurrentSynchronizationContext());
             }
-            else if (Table.topcard.number == -3)
+            else if (Table.topcard.number == CardConstants.REVERSE)
             {
                 Table.SetNextTurn();
                 Card.SetTurneDelay();
             }
-            else if (Table.topcard.number == -2)
+            else if (Table.topcard.number == CardConstants.DRAW_TWO)
             {
                 CardHolder.AllCards[Table.turn - 1].AddCard();
 
@@ -515,7 +524,7 @@ namespace UNOui
                     Card.SetTurneDelay();
                 }, TaskScheduler.FromCurrentSynchronizationContext());
             }
-            else if (Table.topcard.number == -1)
+            else if (Table.topcard.number == CardConstants.BLOCK)
             {
                 if (Settings.PlayerCount == 2)
                 {
@@ -533,6 +542,7 @@ namespace UNOui
                 Table.CheckForTurn();
             }
         }
+
 
         public void RemoveCard(Card card)
         {
